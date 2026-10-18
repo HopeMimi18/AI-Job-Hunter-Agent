@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Job Hunter | Local MVP</title>
+<style>
+:root{font:15px system-ui,Segoe UI,Arial;background:#f6f8fc;color:#18233c}
+*{box-sizing:border-box}body{margin:0}header{background:#17294e;color:#fff;padding:27px max(22px,calc((100% - 1080px)/2))}
+h1{margin:0 0 6px;font-size:28px}header p{margin:0;opacity:.8}main{max-width:1080px;margin:24px auto;padding:0 18px}
+section{background:#fff;border:1px solid #e0e5ef;border-radius:14px;margin-bottom:18px;padding:20px;box-shadow:0 4px 15px #1c355108}
+h2{font-size:18px;margin:0 0 15px}.muted{color:#66738d}p{line-height:1.55}
+button{border:0;border-radius:8px;background:#285bd2;color:white;padding:10px 14px;cursor:pointer;font-weight:650}
+button.secondary{background:#ebf0fb;color:#2450a2}button.warn{background:#ca5a24}button:disabled{opacity:.5;cursor:not-allowed}
+input,textarea,select{border:1px solid #cbd3e3;border-radius:8px;padding:10px;width:100%;font:inherit}
+label{display:block;color:#3d4961;font-weight:600;margin:9px 0 4px}.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.row>*{max-width:100%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px}.job{border:1px solid #e3e7f0;border-radius:12px;padding:16px}
+.job h3{margin:0 0 7px;font-size:16px}.score{font-weight:800;color:#147548;font-size:20px}small{color:#66738d}
+.pill{display:inline-block;padding:4px 8px;background:#e7efff;border-radius:999px;color:#284f9d;font-size:12px}
+#message{white-space:pre-wrap;padding:12px 15px;border-radius:9px;background:#eef4ff;margin-bottom:18px;display:none}
+#message.error{background:#ffeaea;color:#9e2222}a{color:#275ac5}textarea{min-height:115px;resize:vertical}
+.info{background:#fff7e7;padding:10px 12px;border-radius:9px;border:1px solid #ffe4a8}
+</style></head>
+<body><header><h1>AI Job Hunter</h1><p>Private local MVP · CV matching · Job discovery · Application preparation · Whitelisted email submission</p></header>
+<main>
+<div id="message" role="status"></div>
+<section><h2>1. Access and CV</h2><p class="muted">Enter the token from your .env file, then upload your own PDF or Word CV. Nothing is sent externally during CV parsing.</p>
+<div class="grid"><div><label for="token">Admin token</label><input id="token" type="password" placeholder="JOB_HUNTER_ADMIN_TOKEN"></div>
+<div><label for="resume">Resume (PDF / DOCX, maximum 5MB)</label><input type="file" id="resume" accept=".pdf,.docx"></div></div>
+<div class="row" style="margin-top:12px"><button id="upload">Upload and Analyse CV</button><button class="secondary" id="refresh">Refresh Data</button></div><p id="candidate" class="muted">No CV loaded yet.</p></section>
+<section><h2>2. Discover relevant jobs</h2><p class="muted">Configure Adzuna API credentials or public Greenhouse / Lever employer board names in .env. No LinkedIn scraping is performed.</p>
+<button id="discover">Search configured job feeds</button> <button class="secondary" id="daily">Run daily workflow now</button>
+<p class="info"><strong>Autopilot safety:</strong> OFF by default. To enable automatic sending, set AUTO_APPLY_ENABLED=true, an exact email-recipient allowlist and SMTP credentials in .env, then restart. Automatic sending only considers manually verified, email-application vacancies that pass the score and requirement checks.</p>
+<div id="jobs" class="grid"></div></section>
+<section><h2>3. Import an email-application vacancy</h2><p class="muted">Paste a genuine job advert that explicitly says applications can be sent by email. This is the supported starting point for application submission.</p>
+<form id="importForm"><div class="grid"><div><label>Role</label><input name="title" required placeholder="Junior Java Developer"></div><div><label>Company</label><input name="company" required placeholder="Company name"></div>
+<div><label>Location</label><input name="location" placeholder="Johannesburg / Remote"></div><div><label>Vacancy URL (optional)</label><input name="url" placeholder="https://..."></div></div>
+<label>Full job requirements</label><textarea name="description" required placeholder="Paste the responsibilities, minimum requirements and application instructions"></textarea>
+<label>Application method</label><select name="apply_method"><option value="website">Employer website (link only)</option><option value="email">Application by email</option></select>
+<label>Recruiter application email (if allowed in the advert)</label><input name="apply_email" placeholder="careers@example.com">
+<label style="display:flex;gap:9px;align-items:center;font-weight:normal"><input name="email_submission_allowed" type="checkbox" style="width:auto">I verified the advert explicitly invites applications by email</label>
+<button type="submit">Import Vacancy</button></form></section>
+<section><h2>4. Application process</h2><p>For a vacancy accepting email applications: <strong>Prepare → Approve → Send</strong>. The service adds your CV as an attachment and uses a factual draft based on your skills. A successful send means your email provider accepted the message, not that an employer received, read or accepted your application.</p>
+<div id="applicationDetail" class="muted">Choose Prepare on a job above to see its application text.</div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function headers(json=false){return {'X-Admin-Token':$('token').value, ...(json?{'Content-Type':'application/json'}:{})}}
+function message(text,error=false){$('message').textContent=text;$('message').style.display='block';$('message').className=error?'error':''}
+async function api(path,method='GET',body=null){const opt={method,headers:headers(!(body instanceof FormData)&&body!==null)};if(body!==null)opt.body=body instanceof FormData?body:JSON.stringify(body);const r=await fetch('/api'+path,opt);const o=await r.json();if(!r.ok)throw Error(o.detail||'Request failed');return o}
+async function safe(fn){try{await fn()}catch(e){message(e.message,true)}}
+function node(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x}
+function addButton(label,handler,cl='secondary'){let b=node('button',label,cl);b.onclick=()=>safe(handler);return b}
+async function refresh(){const p=await api('/profile');$('candidate').textContent=p.profile?`${p.profile.name||'Name not found'} | ${p.profile.email||'Email not found'} | Skills: ${(p.profile.skills||[]).join(', ')}`:'No CV uploaded yet.';
+const out=await api('/jobs');const container=$('jobs');container.replaceChildren();if(!out.jobs.length){container.append(node('p','No vacancies yet. Configure a job feed or import a vacancy.','muted'));return}
+for(const j of out.jobs){const card=node('div',undefined,'job');card.append(node('div',`${j.score}/100 · ${(j.blockers||[]).length?'Review required':'Requirements appear compatible'}`,'score'));card.append(node('h3',j.title));card.append(node('p',`${j.company} · ${j.location||'Location not provided'}`,'muted'));
+card.append(node('p',`Matching evidence: ${(j.reasons||[]).join(' | ')||'Not enough evidence'}`));
+if(j.blockers&&j.blockers.length)card.append(node('p',`Review: ${j.blockers.join('; ')}`,'muted'));
+if(j.application_status)card.append(node('span',`Application: ${j.application_status}`,'pill'));
+if(j.url && /^https?:\/\//i.test(j.url)){const a=node('a','Open vacancy');a.href=j.url;a.target='_blank';a.rel='noopener noreferrer';card.append(node('p'));card.lastChild.append(a)}
+let actions=node('div',undefined,'row');actions.append(addButton('Prepare application',async()=>{const result=await api(`/applications/${j.id}/prepare`,'POST');showApplication(j,result.cover_letter);await refresh()}));card.append(actions);container.append(card)} }
+function showApplication(j,letter){const box=$('applicationDetail');box.replaceChildren(node('h3',`${j.title} — ${j.company}`),node('p','Below is the prepared text. Review the role and your qualifications before approving.'));
+let textarea=node('textarea');textarea.value=letter;textarea.readOnly=true;box.append(textarea);
+const row=node('div',undefined,'row');row.append(addButton('Approve',async()=>{await api(`/applications/${j.id}/approve`,'POST');message('Application approved. Sending is a separate action.');await refresh()}));
+row.append(addButton('Send email application',async()=>{if(!confirm(`Send your CV and application to ${j.apply_email||'the recipient'}?`))return;let r=await api(`/applications/${j.id}/submit`,'POST');message(r.note);await refresh()},'warn'));box.append(row);
+if(j.apply_method!=='email')box.append(node('p','This listing has no authorised email submission. Use the employer application link or a later approved integration.','muted'))}
+$('upload').onclick=()=>safe(async()=>{if(!$('resume').files.length)throw Error('Choose a CV first');const form=new FormData();form.append('file',$('resume').files[0]);await api('/profile/upload','POST',form);message('Resume processed and saved locally. Verify your profile details.');await refresh()});
+$('discover').onclick=()=>safe(async()=>{let r=await api('/jobs/search','POST');message(`Discovered ${r.count} vacancies. ${(r.warnings||[]).join(' ')}`);await refresh()});
+$('refresh').onclick=()=>safe(refresh);
+$('daily').onclick=()=>safe(async()=>{let r=await api('/daily/run','POST');message(`Found ${r.discovered} jobs; ${r.applications.length} application attempt(s); digest: ${r.digest}. ${(r.warnings||[]).join(' ')}`);await refresh()});
+$('importForm').onsubmit=e=>{e.preventDefault();safe(async()=>{let f=new FormData(e.target);const job={title:f.get('title'),company:f.get('company'),location:f.get('location'),url:f.get('url'),description:f.get('description'),apply_method:f.get('apply_method'),apply_email:f.get('apply_email'),email_submission_allowed:!!f.get('email_submission_allowed')};await api('/jobs/import','POST',job);message('Vacancy imported and scored.');e.target.reset();await refresh()})};
+$('token').addEventListener('change',()=>safe(refresh));
+// If no token is configured, local-only development endpoints can be queried immediately.
+safe(refresh);
+</script></body></html>
