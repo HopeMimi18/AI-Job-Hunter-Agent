@@ -36,12 +36,24 @@ def init_db():
                 cover_letter TEXT, error TEXT, submitted_at TEXT, updated_at TEXT NOT NULL
             );
         ''')
+        # Upgrade existing local SQLite databases without dropping profiles or applications.
+        columns = {r[1] for r in db.execute('PRAGMA table_info(applications)')}
+        if 'generator' not in columns:
+            db.execute("ALTER TABLE applications ADD COLUMN generator TEXT NOT NULL DEFAULT 'template'")
+        if 'analysis_json' not in columns:
+            db.execute("ALTER TABLE applications ADD COLUMN analysis_json TEXT NOT NULL DEFAULT '{}'")
 
 
 def profile():
     with connect() as db:
         r = db.execute('SELECT * FROM profile WHERE id = 1').fetchone()
     return ({**json.loads(r['data_json']), 'resume_path': r['resume_path']} if r else None)
+
+
+def cv_text() -> str:
+    with connect() as con:
+        r = con.execute('SELECT raw_text FROM profile WHERE id=1').fetchone()
+    return r['raw_text'] if r else ''
 
 
 def set_profile(data: dict, raw_text: str, resume_path: str):
@@ -94,21 +106,32 @@ def jobs(limit=100):
 
 
 def upsert_application(job_id: str, status: str, cover_letter: str | None = None,
-                       error: str | None = None, submitted_at: str | None = None):
-    with connect() as db:
-        db.execute('''INSERT INTO applications(job_id,status,cover_letter,error,submitted_at,updated_at)
-            VALUES(?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET
+                       error: str | None = None, submitted_at: str | None = None,
+                       generator: str | None = None, analysis: dict | None = None):
+    with connect() as con:
+        con.execute('''INSERT INTO applications
+            (job_id,status,cover_letter,error,submitted_at,updated_at,generator,analysis_json)
+            VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET
             status=excluded.status,
             cover_letter=COALESCE(excluded.cover_letter, applications.cover_letter),
-            error=excluded.error, submitted_at=COALESCE(excluded.submitted_at, applications.submitted_at),
+            error=excluded.error,
+            submitted_at=COALESCE(excluded.submitted_at, applications.submitted_at),
+            generator=COALESCE(?, applications.generator),
+            analysis_json=COALESCE(?, applications.analysis_json),
             updated_at=excluded.updated_at''',
-            (job_id, status, cover_letter, error, submitted_at, now()))
+            (job_id, status, cover_letter, error, submitted_at, now(),
+             generator or 'template', json.dumps(analysis or {}),
+             generator, json.dumps(analysis) if analysis is not None else None))
 
 
 def get_application(job_id: str):
-    with connect() as db:
-        r = db.execute('SELECT * FROM applications WHERE job_id=?', (job_id,)).fetchone()
-    return dict(r) if r else None
+    with connect() as con:
+        r = con.execute('SELECT * FROM applications WHERE job_id=?', (job_id,)).fetchone()
+    if not r:
+        return None
+    item = dict(r)
+    item['analysis'] = json.loads(item.pop('analysis_json', '{}'))
+    return item
 
 
 def submissions_today():

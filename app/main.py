@@ -22,7 +22,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title='AI Job Hunter', version='0.1.0', lifespan=lifespan)
+app = FastAPI(title='AI Job Hunter', version='0.2.0', lifespan=lifespan)
 
 
 def authenticated(x_admin_token: str | None = Header(default=None)):
@@ -49,7 +49,7 @@ def dashboard():
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'version': '0.1.0', 'autopilot_enabled': os.getenv('AUTO_APPLY_ENABLED', 'false').lower() in ('1','true','yes')}
+    return {'ok': True, 'version': '0.2.0', 'autopilot_enabled': os.getenv('AUTO_APPLY_ENABLED', 'false').lower() in ('1','true','yes')}
 
 
 @app.get('/api/profile', dependencies=[Depends(authenticated)])
@@ -77,7 +77,7 @@ async def upload(file: UploadFile = File(...)):
         db.set_profile(person, text, str(destination))
         # A new CV changes job-fit scores. Preserve application history while rescoring.
         for existing in db.jobs(100000):
-            score, reasons, blockers = score_job(existing, person)
+            score, reasons, blockers = score_job(existing, person, text)
             db.put_job(existing, score, reasons, blockers)
     except Exception as exc:
         destination.unlink(missing_ok=True)

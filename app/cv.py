@@ -32,6 +32,9 @@ def extract_profile(text: str) -> dict:
     phone_match = re.search(r'(?<!\d)(?:\+27\s?\d{2}|0\d{2})[\s-]?\d{3}[\s-]?\d{4}(?!\d)', text)
     lowered = text.lower()
     skills = [skill for skill in SKILL_PHRASES if re.search(r'(?<![a-z0-9])' + re.escape(skill) + r'(?![a-z0-9])', lowered)]
+    # Handle common plural and combined API wording without inventing experience.
+    if re.search(r'\brest\s+apis?\b|\bhttp\s*/\s*rest\s+apis?\b', lowered) and 'rest api' not in skills:
+        skills.append('rest api')
     return {
         'name': name_line.title() if name_line else '',
         'email': email_match.group(0) if email_match else '',
