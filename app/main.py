@@ -12,7 +12,7 @@ from .cv import read_cv, extract_profile
 from .matching import score_job
 from .sources import discover, make_id
 from .workflow import ingest, prepare, approve, send, autopilot
-from .mailer import send_digest
+from .mailer import send_digest, digest_selection
 import os
 
 
@@ -22,7 +22,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title='AI Job Hunter', version='0.2.0', lifespan=lifespan)
+app = FastAPI(title='AI Job Hunter', version='0.3.0', lifespan=lifespan)
 
 
 def authenticated(x_admin_token: str | None = Header(default=None)):
@@ -49,7 +49,7 @@ def dashboard():
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'version': '0.2.0', 'autopilot_enabled': os.getenv('AUTO_APPLY_ENABLED', 'false').lower() in ('1','true','yes')}
+    return {'ok': True, 'version': '0.3.0', 'autopilot_enabled': os.getenv('AUTO_APPLY_ENABLED', 'false').lower() in ('1','true','yes')}
 
 
 @app.get('/api/profile', dependencies=[Depends(authenticated)])
@@ -87,7 +87,7 @@ async def upload(file: UploadFile = File(...)):
 
 @app.get('/api/jobs', dependencies=[Depends(authenticated)])
 def list_jobs():
-    return {'jobs': db.jobs()}
+    return {'jobs': db.jobs(500)}
 
 
 @app.post('/api/jobs/search', dependencies=[Depends(authenticated)])
@@ -96,7 +96,7 @@ def search_jobs():
     if found and not db.profile():
         raise HTTPException(status_code=400, detail='Upload your CV first')
     count = ingest(found) if found else 0
-    return {'count': count, 'warnings': warnings, 'jobs': db.jobs()[:30]}
+    return {'count': count, 'warnings': warnings, 'jobs': db.jobs(500)}
 
 
 @app.post('/api/jobs/import', dependencies=[Depends(authenticated)])
@@ -160,7 +160,7 @@ def daily_run():
     notification = 'not configured'
     if os.getenv('NOTIFY_EMAIL'):
         try:
-            send_digest(os.environ['NOTIFY_EMAIL'], db.jobs()[:10], results)
+            send_digest(os.environ['NOTIFY_EMAIL'], digest_selection(db.jobs(500)), results)
             notification = 'Email accepted by SMTP server'
         except Exception as exc:
             notification = f'Failed: {exc}'

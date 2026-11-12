@@ -55,6 +55,8 @@ def prepare(job_id: str):
     current = db.get_application(job_id)
     if current and current['status'] == 'email_sent':
         raise ValueError('Already sent: duplicate applications are blocked')
+    if job.get('opportunity_type') in ('bursary', 'apprenticeship', 'learnership', 'training'):
+        raise ValueError('This programme requires a specific application process. Review the official announcement instead of generating a job cover letter')
     if len((job.get('description') or '').strip()) < 30:
         raise ValueError('Job description too short to draft a tailored application')
     score, reasons, blockers = score_job(job, candidate, db.cv_text())

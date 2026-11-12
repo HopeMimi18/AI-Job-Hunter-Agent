@@ -51,11 +51,11 @@ def send_digest(email: str, jobs: list[dict], outcome: list[dict]):
     msg = EmailMessage()
     msg['To'] = email
     msg['Subject'] = 'AI Job Hunter — job matches and application report'
-    lines = ['Your latest job matches:', '']
-    for job in jobs[:10]:
-        lines += [f'{job["score"]}/100  {job["title"]} — {job["company"]}',
+    lines = ['Your latest jobs, bursaries, apprenticeships and other opportunities:', '']
+    for job in jobs[:15]:
+        lines += [f'{job["score"]}/100  [{job.get("opportunity_type", "job").replace("_", " " ).title()}] {job["title"]} — {job["company"]}',
                   f'Location: {job.get("location", "")}',
-                  f'Apply: {job.get("url", "")}', '']
+                  f'View announcement: {job.get("url", "")}', 'Verify eligibility and deadline with the original provider.', '']
     lines += ['Applications attempted (email transport confirmation only):']
     for result in outcome:
         lines.append(f'{result["job_id"]}: {result["status"]}')
@@ -63,3 +63,25 @@ def send_digest(email: str, jobs: list[dict], outcome: list[dict]):
         lines.append('None; no eligible authorised email jobs found or autopilot disabled.')
     msg.set_content('\n'.join(lines))
     smtp_send(msg)
+
+
+def digest_selection(jobs: list[dict], limit: int = 12) -> list[dict]:
+    """Include bursaries and work-based learning alongside highest-fit jobs."""
+    allocations = {'job': 4, 'internship': 2, 'bursary': 2,
+                   'learnership': 1, 'apprenticeship': 1,
+                   'graduate_programme': 1, 'training': 1}
+    selected = []
+    identifiers = set()
+    for kind, cap in allocations.items():
+        candidates = [x for x in jobs if x.get('opportunity_type', 'job') == kind]
+        for job in candidates[:cap]:
+            if job['id'] not in identifiers:
+                selected.append(job)
+                identifiers.add(job['id'])
+    for job in jobs:
+        if len(selected) >= limit:
+            break
+        if job['id'] not in identifiers:
+            selected.append(job)
+            identifiers.add(job['id'])
+    return selected[:limit]

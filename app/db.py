@@ -29,13 +29,20 @@ def init_db():
                 apply_method TEXT NOT NULL DEFAULT 'website', apply_email TEXT,
                 email_submission_allowed INTEGER NOT NULL DEFAULT 0,
                 score INTEGER NOT NULL DEFAULT 0, reasons_json TEXT NOT NULL DEFAULT '[]',
-                blockers_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL
+                blockers_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL,
+                opportunity_type TEXT NOT NULL DEFAULT 'job', published_at TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS applications (
                 job_id TEXT PRIMARY KEY REFERENCES jobs(id), status TEXT NOT NULL,
                 cover_letter TEXT, error TEXT, submitted_at TEXT, updated_at TEXT NOT NULL
             );
         ''')
+        # Upgrade existing local SQLite databases without losing job and application data.
+        job_columns = {r[1] for r in db.execute('PRAGMA table_info(jobs)')}
+        if 'opportunity_type' not in job_columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN opportunity_type TEXT NOT NULL DEFAULT 'job'")
+        if 'published_at' not in job_columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN published_at TEXT NOT NULL DEFAULT ''")
         # Upgrade existing local SQLite databases without dropping profiles or applications.
         columns = {r[1] for r in db.execute('PRAGMA table_info(applications)')}
         if 'generator' not in columns:
@@ -68,20 +75,22 @@ def put_job(item: dict, score: int, reasons: list[str], blockers: list[str]):
     with connect() as db:
         db.execute('''INSERT INTO jobs
             (id,title,company,location,description,url,source,apply_method,apply_email,
-             email_submission_allowed,score,reasons_json,blockers_json,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             email_submission_allowed,score,reasons_json,blockers_json,updated_at,opportunity_type,published_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title, company=excluded.company, location=excluded.location,
               description=excluded.description, url=excluded.url, source=excluded.source,
               apply_method=excluded.apply_method, apply_email=excluded.apply_email,
               email_submission_allowed=excluded.email_submission_allowed, score=excluded.score,
               reasons_json=excluded.reasons_json, blockers_json=excluded.blockers_json,
-              updated_at=excluded.updated_at''',
+              updated_at=excluded.updated_at, opportunity_type=excluded.opportunity_type,
+              published_at=excluded.published_at''',
             (item['id'], item['title'], item['company'], item.get('location', ''),
              item.get('description', ''), item.get('url', ''), item.get('source', 'manual'),
              item.get('apply_method', 'website'), item.get('apply_email', ''),
              int(item.get('email_submission_allowed', False)), score, json.dumps(reasons),
-             json.dumps(blockers), now()))
+             json.dumps(blockers), now(), item.get('opportunity_type', 'job'),
+             item.get('published_at', '')))
 
 
 def get_job(job_id: str):

@@ -60,7 +60,46 @@ def select_project_evidence(cv_text: str, job: dict, limit: int = 2) -> list[dic
     return [item for _, item in ranked[:limit]]
 
 
+def score_opportunity(job: dict, profile: dict) -> tuple[int, list[str], list[str]]:
+    """A discovery priority, NOT an assessment of bursary/programme eligibility."""
+    title = (job.get('title') or '').lower()
+    desc = (job.get('description') or '').lower()
+    kind = job.get('opportunity_type', 'job')
+    relevant_fields = ('software', 'information technology', 'computing', 'computer science',
+                       'cloud', 'data science', 'cyber', 'digital', 'programming', 'ict',
+                       'developer', 'python', 'java', 'information systems', 'software engineering',
+                       'it learnership', 'it internship', 'it bursar', 'computer')
+    strong = any(re.search(r'\b' + re.escape(word) + r'\b', title) for word in relevant_fields)
+    weaker = any(re.search(r'\b' + re.escape(word) + r'\b', desc) for word in relevant_fields)
+    score = 15 + (55 if strong else (20 if weaker else 0))
+    requested = _skill_mentions(title + ' ' + desc)
+    actual = set(x.lower() for x in profile.get('skills', []))
+    verified = requested & actual
+    score += min(20, 5 * len(verified))
+    if kind == 'bursary' and profile.get('education_in_progress'):
+        score += 5
+    reasons = [f'{kind.replace("_", " ").title()} opportunity (eligibility not confirmed)']
+    if strong:
+        reasons.append('Technical field mentioned in the announcement title')
+    elif weaker:
+        reasons.append('Technical field mentioned in the RSS excerpt')
+    if verified:
+        reasons.append('CV skills mentioned: ' + ', '.join(sorted(verified)[:6]))
+    blockers = ['Check the original announcement for closing date, eligibility and official application link']
+    if kind == 'bursary':
+        blockers.append('Verify course, NQF level, institution, funding rules and required documents')
+    if kind in ('apprenticeship', 'learnership'):
+        blockers.append('Verify qualification, age, location and programme conditions')
+    if not strong and not weaker:
+        blockers.append('Field of study or work not confirmed relevant to your CV')
+    return min(95, score), reasons, blockers
+
+
 def score_job(job: dict, profile: dict, cv_text: str = '') -> tuple[int, list[str], list[str]]:
+    if job.get('opportunity_type', 'job') in (
+            'bursary', 'learnership', 'apprenticeship', 'training', 'graduate_programme'):
+        return score_opportunity(job, profile)
+
     title = (job.get('title') or '').lower()
     desc = (job.get('description') or '').lower()
     loc = (job.get('location') or '').lower()
@@ -70,6 +109,8 @@ def score_job(job: dict, profile: dict, cv_text: str = '') -> tuple[int, list[st
     missing = sorted(requested - candidate)
     reasons, blockers = [], []
     score = 10
+    if job.get('source') == 'studentroom':
+        blockers.append('StudentRoom is an announcement source; verify the official programme requirements and deadline')
     if any(x in title for x in RELEVANT_TITLE):
         score += 24
         reasons.append('Relevant technical role')
