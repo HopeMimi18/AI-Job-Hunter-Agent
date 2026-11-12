@@ -11,6 +11,7 @@ from app import workflow
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     monkeypatch.setattr(db, 'DB_PATH', tmp_path / 'test.sqlite3')
+    monkeypatch.setenv('BEDROCK_ENABLED', 'false')  # Unit tests must never call real AWS.
     monkeypatch.delenv('AUTO_APPLY_ENABLED', raising=False)
     monkeypatch.delenv('APPROVED_APPLICATION_EMAILS', raising=False)
     db.init_db()
